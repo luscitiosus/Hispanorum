@@ -94,7 +94,9 @@ export function parseResultados(html) {
         const a = card.find("a[id^='ref-']").first().length ? card.find("a[id^='ref-']").first() : links.last();
         const href = a.attr("href");
         const url = href ? new URL(href, `${BASE}/search/`).toString() : undefined;
-        const referencia = href?.match(/openDocument\/([^/]+)/)?.[1] ?? a.attr("id")?.replace(/^ref-/, "");
+        // Se conserva la base (TS/AN) y la fecha del enlace: la web las necesita para abrir el documento.
+        const m = href?.match(/\/search\/([A-Z]+)\/openDocument\/([A-Za-z0-9]+)(?:\/(\d{8}))?/);
+        const referencia = m ? [m[1], m[2], m[3]].filter(Boolean).join("/") : a.attr("id")?.replace(/^ref-/, "");
         const metadatos = {};
         card.find("div.metadatos li").each((_, li) => {
             const t = normalize($(li).text());
@@ -147,8 +149,15 @@ export function urlsPdf(referencia) {
 }
 function diagnostico(res) {
     const tipo = res.headers.get("content-type") ?? "?";
-    const muestra = res.body.subarray(0, 300).toString("utf-8").replace(/\s+/g, " ");
-    return `HTTP ${res.status}, ${tipo}, ${res.body.length} bytes: «${muestra}»`;
+    const html = res.body.toString("utf-8");
+    const $ = cheerio.load(html);
+    const scripts = $("script")
+        .map((_, el) => $(el).attr("src") ?? $(el).html()?.replace(/\s+/g, " ").slice(0, 200))
+        .get()
+        .join(" ¦ ");
+    $("script,style,head").remove();
+    const visible = normalize($.root().text()).replace(/\s+/g, " ").slice(0, 300);
+    return `HTTP ${res.status}, ${tipo}, ${res.body.length} bytes; texto: «${visible}»; scripts: «${scripts.slice(0, 500)}»`;
 }
 const isPdf = (b) => b.subarray(0, 5).toString() === "%PDF-";
 /**
@@ -156,13 +165,18 @@ const isPdf = (b) => b.subarray(0, 5).toString() === "%PDF-";
  * así que se abre primero la página del documento (openDocument), se toma de ella
  * el enlace real al PDF y se pide con las mismas cookies.
  */
-export async function textoResolucion(referencia, urlDoc) {
-    if (!/^[A-Za-z0-9]+$/.test(referencia)) {
-        throw new SourceError(`Referencia CENDOJ no válida: "${referencia}" (es el código alfanumérico que devuelve cendoj_buscar).`);
-    }
+/** "TS/4801ac…/20261015" o "4801ac…" → partes. */
+export function parseReferencia(ref) {
+    const m = ref.trim().match(/^(?:([A-Z]+)\/)?([A-Za-z0-9]+)(?:\/(\d{8}))?$/);
+    if (!m)
+        throw new SourceError(`Referencia CENDOJ no válida: "${ref}" (usa el campo 'referencia' tal como lo devuelve cendoj_buscar).`);
+    return { tab: m[1] ?? "AN", hash: m[2], fecha: m[3] };
+}
+export async function textoResolucion(refCompleta, urlDoc) {
+    const { tab, hash: referencia, fecha } = parseReferencia(refCompleta);
     if (urlDoc && !urlDoc.startsWith(`${BASE}/search/`))
         throw new SourceError(`La URL debe ser de ${BASE}/search/.`);
-    const docUrl = urlDoc ?? urlDocumento(referencia);
+    const docUrl = urlDoc ?? `${BASE}/search/${tab}/openDocument/${referencia}${fecha ? `/${fecha}` : ""}`;
     const intentos = [];
     const jar = new CookieJar();
     jar.absorb(await request(INDEX, { noCache: true }));
@@ -216,4 +230,7 @@ export async function textoResolucion(referencia, urlDoc) {
     }
     throw new SourceError(`CENDOJ no devolvió el PDF de la referencia ${referencia}. Abre la resolución en ${docUrl}. Detalle técnico: ${intentos.join(" | ")}`, directos[0]);
 }
-export const urlDocumento = (referencia) => `${BASE}/search/AN/openDocument/${referencia}`;
+export const urlDocumento = (ref) => {
+    const { tab, hash, fecha } = parseReferencia(ref);
+    return `${BASE}/search/${tab}/openDocument/${hash}${fecha ? `/${fecha}` : ""}`;
+};
