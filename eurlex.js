@@ -73,9 +73,11 @@ SELECT DISTINCT ?celex ?titulo ?fecha ?ecli WHERE {
 ORDER BY DESC(?fecha)
 LIMIT ${Math.min(Math.max(limite, 1), 50)}`;
 }
+// Los títulos de jurisprudencia en CELLAR separan sus partes con "#".
+const limpiaTitulo = (t) => t?.replace(/\s*#\s*/g, " ").trim();
 const toDoc = (r) => ({
     celex: r.celex,
-    titulo: r.titulo,
+    titulo: limpiaTitulo(r.titulo),
     fecha: r.fecha,
     ecli: r.ecli,
     url: urlEurLex(r.celex),

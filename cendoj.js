@@ -84,6 +84,7 @@ export function buildPayload(b) {
     }
     return p;
 }
+const conPrefijoEcli = (e) => (e ? (e.startsWith("ECLI:") ? e : `ECLI:${e}`) : undefined);
 export function parseResultados(html) {
     const $ = cheerio.load(html);
     const resultados = [];
@@ -111,7 +112,7 @@ export function parseResultados(html) {
             referencia,
             url,
             roj: a.attr("data-roj") ?? metadatos["Roj"] ?? metadatos["ROJ"],
-            ecli: metadatos["ECLI"] ?? normalize(card.text()).match(/ECLI:ES:[A-Z]+:\d{4}:\d+[A-Z]?/)?.[0],
+            ecli: conPrefijoEcli(metadatos["ECLI"]) ?? normalize(card.text()).match(/ECLI:ES:[A-Z]+:\d{4}:\d+[A-Z]?/)?.[0],
             fecha: fechares && /^\d{8}$/.test(fechares) ? `${fechares.slice(0, 4)}-${fechares.slice(4, 6)}-${fechares.slice(6)}` : metadatos["Fecha"],
             metadatos,
             resumen,
@@ -138,18 +139,71 @@ export async function buscar(b) {
 export function urlPdf(referencia) {
     return `${BASE}/search/contenidos.action?action=accessToPDF&reference=${encodeURIComponent(referencia)}&encode=true`;
 }
-export async function textoResolucion(referencia) {
+function diagnostico(res) {
+    const tipo = res.headers.get("content-type") ?? "?";
+    const muestra = res.body.subarray(0, 300).toString("utf-8").replace(/\s+/g, " ");
+    return `HTTP ${res.status}, ${tipo}, ${res.body.length} bytes: «${muestra}»`;
+}
+const isPdf = (b) => b.subarray(0, 5).toString() === "%PDF-";
+/**
+ * Texto de una resolución. El PDF solo se sirve dentro de la sesión del buscador,
+ * así que se abre primero la página del documento (openDocument), se toma de ella
+ * el enlace real al PDF y se pide con las mismas cookies.
+ */
+export async function textoResolucion(referencia, urlDoc) {
     if (!/^[A-Za-z0-9]+$/.test(referencia)) {
         throw new SourceError(`Referencia CENDOJ no válida: "${referencia}" (es el código alfanumérico que devuelve cendoj_buscar).`);
     }
-    const url = urlPdf(referencia);
-    const res = await request(url, { headers: { Accept: "application/pdf,*/*", Referer: INDEX } });
-    if (res.body.subarray(0, 5).toString() !== "%PDF-") {
-        throw new SourceError(`CENDOJ no devolvió un PDF para la referencia ${referencia} (puede que la web haya cambiado o que haya limitado las consultas).`, url);
+    if (urlDoc && !urlDoc.startsWith(`${BASE}/search/`))
+        throw new SourceError(`La URL debe ser de ${BASE}/search/.`);
+    const docUrl = urlDoc ?? urlDocumento(referencia);
+    const intentos = [];
+    const jar = new CookieJar();
+    jar.absorb(await request(INDEX, { noCache: true }));
+    const pedirPdf = async (url, referer) => {
+        const res = await request(url, {
+            headers: { Accept: "application/pdf,*/*", Referer: referer, Cookie: jar.header() },
+            noCache: true,
+            okStatus: [302, 403, 404],
+        });
+        jar.absorb(res);
+        if (isPdf(res.body)) {
+            const texto = await pdfToText(res.body);
+            if (!texto)
+                throw new SourceError(`El PDF de ${referencia} no contiene texto extraíble (¿escaneado?).`, url);
+            return texto;
+        }
+        intentos.push(`${url} → ${diagnostico(res)}`);
+        return undefined;
+    };
+    // 1) Página del documento y enlace real al PDF.
+    const doc = await request(docUrl, { headers: { Accept: "text/html", Referer: INDEX, Cookie: jar.header() }, noCache: true, okStatus: [403, 404] });
+    jar.absorb(doc);
+    if (isPdf(doc.body))
+        return { url: docUrl, texto: await pdfToText(doc.body) };
+    const html = doc.text();
+    const $ = cheerio.load(html);
+    const enlaces = new Set();
+    $("[href*='accessToPDF'],[data*='accessToPDF'],[src*='accessToPDF']").each((_, el) => {
+        const v = $(el).attr("href") ?? $(el).attr("data") ?? $(el).attr("src");
+        if (v)
+            enlaces.add(new URL(v.replace(/&amp;/g, "&"), docUrl).toString());
+    });
+    for (const m of html.matchAll(/["']([^"']*accessToPDF[^"']*)["']/g)) {
+        enlaces.add(new URL(m[1].replace(/&amp;/g, "&"), docUrl).toString());
     }
-    const texto = await pdfToText(res.body);
-    if (!texto)
-        throw new SourceError(`El PDF de ${referencia} no contiene texto extraíble (¿escaneado?).`, url);
-    return { url, texto };
+    for (const url of enlaces) {
+        const texto = await pedirPdf(url, docUrl);
+        if (texto)
+            return { url, texto };
+    }
+    if (!enlaces.size)
+        intentos.push(`${docUrl} → sin enlace al PDF; ${diagnostico(doc)}`);
+    // 2) Enlace directo al PDF dentro de la misma sesión.
+    const directo = urlPdf(referencia);
+    const texto = await pedirPdf(directo, docUrl);
+    if (texto)
+        return { url: directo, texto };
+    throw new SourceError(`CENDOJ no devolvió el PDF de la referencia ${referencia}. Abre la resolución en ${docUrl}. Detalle técnico: ${intentos.join(" | ")}`, directo);
 }
 export const urlDocumento = (referencia) => `${BASE}/search/AN/openDocument/${referencia}`;

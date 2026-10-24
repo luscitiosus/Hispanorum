@@ -271,15 +271,16 @@ export function createServer() {
     }));
     server.registerTool("cendoj_texto", {
         title: "Texto completo de una resolución (CENDOJ)",
-        description: "Descarga el PDF oficial de la resolución y devuelve su texto literal. Paginado.",
+        description: "Descarga el PDF oficial de la resolución y devuelve su texto literal. Pasa 'referencia' y 'url' tal como los devuelve cendoj_buscar. Paginado.",
         inputSchema: {
             referencia: z.string().describe("Campo 'referencia' de cendoj_buscar"),
+            url: z.string().optional().describe("Campo 'URL' de cendoj_buscar (recomendado)"),
             offset,
             max_caracteres: maxChars,
         },
-    }, safe(async ({ referencia, offset, max_caracteres }) => {
-        const { url, texto } = await cendoj.textoResolucion(referencia);
-        return withCitation({ fuente: "CENDOJ · Consejo General del Poder Judicial", identificador: `referencia ${referencia}`, url: cendoj.urlDocumento(referencia), extra: { pdf: url } }, page(texto, offset, max_caracteres));
+    }, safe(async ({ referencia, url: urlDoc, offset, max_caracteres }) => {
+        const { url, texto } = await cendoj.textoResolucion(referencia, urlDoc);
+        return withCitation({ fuente: "CENDOJ · Consejo General del Poder Judicial", identificador: `referencia ${referencia}`, url: urlDoc ?? cendoj.urlDocumento(referencia), extra: { pdf: url } }, page(texto, offset, max_caracteres));
     }));
     // ──────────────────────── Tribunal Constitucional ────────────────────────
     server.registerTool("tc_resolucion", {
