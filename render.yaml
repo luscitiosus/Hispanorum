@@ -1,0 +1,14 @@
+services:
+  - type: web
+    name: fuentes-juridicas-mcp
+    runtime: node
+    plan: free
+    region: frankfurt
+    buildCommand: npm install
+    startCommand: node remote.js
+    healthCheckPath: /health
+    envVars:
+      - key: NODE_VERSION
+        value: "22"
+      - key: FJ_SECRET
+        generateValue: true
