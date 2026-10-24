@@ -160,6 +160,13 @@ function diagnostico(res) {
     return `HTTP ${res.status}, ${tipo}, ${res.body.length} bytes; texto: «${visible}»; scripts: «${scripts.slice(0, 500)}»`;
 }
 const isPdf = (b) => b.subarray(0, 5).toString() === "%PDF-";
+/** Página "Control Descargas masivas" con CAPTCHA: no se intenta sortear. */
+const esCaptcha = (b) => /Descargas masivas|id=["']captcha["']/i.test(b.toString("utf-8"));
+function errorCaptcha(docUrl) {
+    return new SourceError(`El CENDOJ ha mostrado su control anti-descargas masivas (CAPTCHA) y no entrega el texto a este servidor. ` +
+        `Es una protección deliberada del CGPJ y el conector no la sortea. Abre la resolución en el navegador: ${docUrl} ` +
+        `(los datos de la búsqueda — ROJ, ECLI, ponente, resumen — sí son oficiales y pueden citarse).`, docUrl);
+}
 /**
  * Texto de una resolución. El PDF solo se sirve dentro de la sesión del buscador,
  * así que se abre primero la página del documento (openDocument), se toma de ella
@@ -187,6 +194,8 @@ export async function textoResolucion(refCompleta, urlDoc) {
             okStatus: [302, 403, 404],
         });
         jar.absorb(res);
+        if (esCaptcha(res.body))
+            throw errorCaptcha(referer);
         if (isPdf(res.body)) {
             const texto = await pdfToText(res.body);
             if (!texto)
@@ -199,6 +208,8 @@ export async function textoResolucion(refCompleta, urlDoc) {
     // 1) Página del documento y enlace real al PDF.
     const doc = await request(docUrl, { headers: { Accept: "text/html", Referer: INDEX, Cookie: jar.header() }, noCache: true, okStatus: [403, 404] });
     jar.absorb(doc);
+    if (esCaptcha(doc.body))
+        throw errorCaptcha(docUrl);
     if (isPdf(doc.body))
         return { url: docUrl, texto: await pdfToText(doc.body) };
     const html = doc.text();

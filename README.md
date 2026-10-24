@@ -27,9 +27,9 @@ En el plan gratuito el servicio se duerme tras 15 minutos sin uso; la primera co
 
 ## Limitaciones
 
-- No probado todavía contra las webs reales (se escribió en un entorno sin acceso a ellas); los analizadores sí están probados con respuestas reales guardadas.
+- Probado en vivo el 24/10/2026: BOE, autonómicos, TC, EUR-Lex y TJUE funcionan; del CENDOJ funciona la búsqueda.
 - BOE: API oficial, lo más fiable; su buscador ha dado errores 500 intermitentes.
-- CENDOJ: sin API, depende del formulario web; el CGPJ solo permite uso particular, sin descargas masivas.
+- CENDOJ: la búsqueda funciona. El texto completo no: desde Render el CGPJ muestra su CAPTCHA «Descargas masivas», que el conector no sortea; devuelve el enlace para abrir la resolución en el navegador.
 - TC: lectura por cita, ECLI o id; no busca por palabras.
 - UE/TJUE: búsqueda por palabras del título; autos y documentos antiguos a veces sin versión española.
 - Autonómicos: lo consolidado sale del BOE; para lo demás hace falta la URL del diario.

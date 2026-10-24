@@ -271,7 +271,7 @@ export function createServer() {
     }));
     server.registerTool("cendoj_texto", {
         title: "Texto completo de una resolución (CENDOJ)",
-        description: "Descarga el PDF oficial de la resolución y devuelve su texto literal. Pasa 'referencia' y 'url' tal como los devuelve cendoj_buscar. Paginado.",
+        description: "Intenta descargar el PDF oficial de la resolución y devolver su texto literal. El CENDOJ suele exigir un CAPTCHA a servidores en la nube; en ese caso devuelve el enlace para abrirla en el navegador. Pasa 'referencia' tal como la devuelve cendoj_buscar. Paginado.",
         inputSchema: {
             referencia: z.string().describe("Campo 'referencia' de cendoj_buscar"),
             url: z.string().optional().describe("Campo 'URL' de cendoj_buscar (recomendado)"),
