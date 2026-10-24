@@ -1,6 +1,6 @@
 # fuentes-juridicas-mcp
 
-Conector MCP de fuentes jurídicas oficiales: BOE (legislación estatal y autonómica consolidada, sumario y diario), boletines autonómicos, CENDOJ, Tribunal Constitucional, EUR-Lex y TJUE. Cada texto se devuelve literal, con identificador (BOE-A, ROJ/ECLI, CELEX, STC) y URL oficial.
+Conector MCP de fuentes jurídicas oficiales: BOE (legislación estatal y autonómica consolidada, sumario y diario), boletines autonómicos, CENDOJ, Tribunal Constitucional, EUR-Lex, TJUE y TEDH (HUDOC). Cada texto se devuelve literal, con identificador (BOE-A, ROJ/ECLI, CELEX, STC) y URL oficial.
 
 Todos los archivos van en la raíz del repositorio, sin carpetas y sin compilar.
 
@@ -23,7 +23,7 @@ En el plan gratuito el servicio se duerme tras 15 minutos sin uso; la primera co
 
 ## Herramientas
 
-`boe_buscar_legislacion`, `boe_metadatos`, `boe_indice`, `boe_articulo`, `boe_texto_consolidado`, `boe_sumario`, `boe_documento`, `autonomico_boletines`, `autonomico_documento`, `cendoj_buscar`, `cendoj_texto`, `tc_resolucion`, `ue_buscar`, `ue_documento`, `tjue_asunto`.
+`boe_buscar_legislacion`, `boe_metadatos`, `boe_indice`, `boe_articulo`, `boe_texto_consolidado`, `boe_sumario`, `boe_documento`, `autonomico_boletines`, `autonomico_documento`, `cendoj_buscar`, `cendoj_texto`, `tc_resolucion`, `ue_buscar`, `ue_documento`, `tjue_asunto`, `tedh_buscar`, `tedh_documento`.
 
 ## Limitaciones
 
@@ -32,6 +32,7 @@ En el plan gratuito el servicio se duerme tras 15 minutos sin uso; la primera co
 - CENDOJ: la búsqueda funciona. El texto completo no: desde Render el CGPJ muestra su CAPTCHA «Descargas masivas», que el conector no sortea; devuelve el enlace para abrir la resolución en el navegador.
 - TC: lectura por cita, ECLI o id; no busca por palabras.
 - UE/TJUE: búsqueda por palabras del título; autos y documentos antiguos a veces sin versión española.
+- TEDH: vía HUDOC (servicio JSON que usa la propia web, sin API documentada). Textos oficiales en inglés y francés; la búsqueda por texto debe ir en esos idiomas.
 - Autonómicos: lo consolidado sale del BOE; para lo demás hace falta la URL del diario.
 - Desde Render las peticiones salen de un centro de datos; CENDOJ o EUR-Lex podrían bloquearlas.
 

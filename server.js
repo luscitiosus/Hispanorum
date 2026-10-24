@@ -7,7 +7,8 @@ import * as cendoj from "./cendoj.js";
 import * as tc from "./tc.js";
 import * as ue from "./eurlex.js";
 import * as auto from "./autonomicos.js";
-export const INSTRUCTIONS = `Servidor de fuentes jurídicas oficiales españolas y europeas (BOE, boletines autonómicos, CENDOJ, Tribunal Constitucional, EUR-Lex y TJUE).
+import * as tedh from "./tedh.js";
+export const INSTRUCTIONS = `Servidor de fuentes jurídicas oficiales españolas y europeas (BOE, boletines autonómicos, CENDOJ, Tribunal Constitucional, EUR-Lex, TJUE y TEDH).
 
 Reglas para evitar errores de cita:
 1. Cita solo preceptos y resoluciones cuyo texto hayas obtenido con estas herramientas en esta conversación. Si no lo has leído, dilo y ofrece buscarlo.
@@ -382,6 +383,46 @@ export function createServer() {
         if (!asunto && !ecli)
             throw new SourceError("Indica 'asunto' o 'ecli'.");
         return `FUENTE: CELLAR / EUR-Lex (jurisprudencia del TJUE)\n\n${found.join("\n\n")}`;
+    }));
+    // ──────────────────────── TEDH (HUDOC) ────────────────────────
+    server.registerTool("tedh_buscar", {
+        title: "Buscar jurisprudencia del TEDH (HUDOC)",
+        description: "Busca sentencias y decisiones del Tribunal Europeo de Derechos Humanos en HUDOC, la base oficial del Tribunal. Filtra por texto, Estado demandado (ESP = España), número de demanda, ECLI, artículo del Convenio, Gran Sala, idioma y fechas. Devuelve el itemid para leer el texto con tedh_documento. Las versiones oficiales están en inglés (ENG) y francés (FRE); las traducciones al español (SPA) no son oficiales.",
+        inputSchema: {
+            texto: z.string().optional().describe('Texto libre en inglés o francés, p. ej. "home" AND "noise". Admite AND, OR, NOT y comillas'),
+            demandado: z.string().optional().describe("Código del Estado demandado: ESP, FRA, ITA, DEU, GBR, TUR…"),
+            numero_demanda: z.string().optional().describe("Número de demanda, p. ej. 16798/90"),
+            ecli: z.string().optional().describe("ECLI:CE:ECHR:1994:1209JUD001679890"),
+            articulo: z.string().optional().describe('Artículo del Convenio: "8", "6-1", "P1-1" (art. 1 del Protocolo 1)'),
+            tipo: z.enum(["sentencias", "decisiones", "todo"]).default("sentencias"),
+            idioma: z.enum(["ENG", "FRE", "SPA"]).optional().describe("ENG/FRE oficiales; SPA = traducción no oficial"),
+            gran_sala: z.boolean().default(false),
+            desde: fechaIso.optional(),
+            hasta: fechaIso.optional(),
+            limite: z.number().int().min(1).max(50).default(10),
+            inicio: z.number().int().min(0).default(0),
+        },
+    }, safe(async (a) => {
+        if (!a.texto && !a.demandado && !a.numero_demanda && !a.ecli && !a.articulo) {
+            throw new SourceError("Indica al menos texto, demandado, numero_demanda, ecli o articulo.");
+        }
+        const r = await tedh.buscar(a);
+        const lines = r.resultados.map((x) => `• ${x.titulo}\n  itemid: ${x.itemid} | Demanda: ${x.demanda ?? "-"} | Fecha: ${x.fecha ?? "-"} | Idioma: ${x.idioma ?? "-"}` +
+            `${x.formacion ? ` | ${x.formacion}` : ""}\n` +
+            `  ECLI: ${x.ecli ?? "-"} | Estado: ${x.demandado ?? "-"} | Artículos: ${x.articulos ?? "-"}` +
+            `${x.importancia ? ` | Importancia: ${x.importancia} (1 = máxima)` : ""}\n` +
+            (x.conclusion ? `  Conclusión (HUDOC): ${x.conclusion}\n` : "") +
+            `  URL: ${x.url}`);
+        return (`FUENTE: HUDOC · Tribunal Europeo de Derechos Humanos\nTotal: ${r.total} resultados (mostrando desde ${a.inicio}).\n\n` +
+            listado(lines, "Sin resultados. Recuerda que el texto libre debe ir en inglés o francés."));
+    }));
+    server.registerTool("tedh_documento", {
+        title: "Texto de una resolución del TEDH (HUDOC)",
+        description: "Texto completo de una sentencia o decisión del TEDH por su itemid de HUDOC (p. ej. 001-57905). Paginado.",
+        inputSchema: { itemid: z.string().describe("itemid de tedh_buscar, p. ej. 001-57905"), offset, max_caracteres: maxChars },
+    }, safe(async ({ itemid, offset, max_caracteres }) => {
+        const d = await tedh.documento(itemid);
+        return withCitation({ fuente: "HUDOC · Tribunal Europeo de Derechos Humanos", identificador: itemid, url: d.url }, page(d.texto, offset, max_caracteres));
     }));
     return server;
 }
