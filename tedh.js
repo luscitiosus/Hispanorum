@@ -4,13 +4,22 @@
 //  - Búsqueda: /app/query/results?query=…&select=…&sort=…&start=…&length=…
 //  - Texto:    /app/conversion/docx/html/body?library=ECHR&id={itemid}
 // HUDOC está tras Cloudflare, que rechaza clientes sin un User-Agent de tipo navegador.
+// echr-extractor documenta que basta con "Mozilla/5.0"; añadir más texto al User-Agent
+// hace que Cloudflare lo trate como bot.
 import { request, SourceError } from "./http.js";
-import { htmlToText } from "./text.js";
+import { htmlToText, pdfToText } from "./text.js";
 const BASE = "https://hudoc.echr.coe.int";
 const HEADERS = {
-    "User-Agent": "Mozilla/5.0 (compatible; fuentes-juridicas-mcp/0.1)",
-    Accept: "application/json, text/html;q=0.9",
+    "User-Agent": "Mozilla/5.0",
+    Accept: "application/json, text/plain, */*",
+    "Accept-Language": "en-GB,en;q=0.9,fr;q=0.8,es;q=0.7",
+    Referer: `${BASE}/`,
 };
+function rechazo(res, url) {
+    const t = res.body.toString("utf-8");
+    const cf = /cloudflare|cf-chl|challenge|Just a moment/i.test(t) ? " (verificación antibots de Cloudflare)" : "";
+    return new SourceError(`HUDOC rechazó la petición: HTTP ${res.status}${cf}.`, url, res.status);
+}
 const SELECT = [
     "itemid", "docname", "appno", "ecli", "kpdate", "judgementdate", "respondent", "article",
     "conclusion", "importance", "languageisocode", "doctypebranch", "documentcollectionid2",
@@ -77,7 +86,9 @@ export async function buscar(b) {
         length: String(b.limite),
     });
     const url = `${BASE}/app/query/results?${params}`;
-    const res = await request(url, { headers: HEADERS });
+    const res = await request(url, { headers: HEADERS, okStatus: [403, 429, 503] });
+    if (res.status >= 400)
+        throw rechazo(res, url);
     let json;
     try {
         json = JSON.parse(res.text());
@@ -91,11 +102,28 @@ export async function documento(itemid) {
     const id = itemid.trim();
     if (!/^\d{3}-\d+$/.test(id))
         throw new SourceError(`Identificador HUDOC no válido: "${itemid}" (formato 001-57574).`);
-    const url = `${BASE}/app/conversion/docx/html/body?library=ECHR&id=${id}`;
-    const res = await request(url, { headers: HEADERS });
-    const texto = htmlToText(res.text());
-    if (texto.length < 200) {
-        throw new SourceError(`HUDOC no tiene texto para ${id} (algunos documentos solo existen como PDF o resumen). Consúltalo en ${urlHudoc(id)}`, url);
+    const errores = [];
+    // 1) Conversión a HTML (la que usa el visor de la web).
+    const htmlUrl = `${BASE}/app/conversion/docx/html/body?library=ECHR&id=${id}`;
+    const html = await request(htmlUrl, { headers: { ...HEADERS, Accept: "text/html,*/*" }, okStatus: [403, 404, 429, 503] });
+    if (html.status < 400) {
+        const texto = htmlToText(html.text());
+        if (texto.length >= 200)
+            return { url: urlHudoc(id), texto, via: "HTML" };
+        errores.push("HTML vacío");
     }
-    return { url: urlHudoc(id), texto };
+    else
+        errores.push(rechazo(html, htmlUrl).message);
+    // 2) PDF oficial del documento.
+    const pdfUrl = `${BASE}/app/conversion/pdf/?library=ECHR&id=${id}&filename=${id}.pdf`;
+    const pdf = await request(pdfUrl, { headers: { ...HEADERS, Accept: "application/pdf,*/*" }, okStatus: [403, 404, 429, 503] });
+    if (pdf.status < 400 && pdf.body.subarray(0, 5).toString() === "%PDF-") {
+        const texto = await pdfToText(pdf.body);
+        if (texto.length >= 200)
+            return { url: urlHudoc(id), texto, via: "PDF" };
+        errores.push("PDF sin texto extraíble");
+    }
+    else
+        errores.push(pdf.status >= 400 ? rechazo(pdf, pdfUrl).message : "la ruta del PDF no devolvió un PDF");
+    throw new SourceError(`No se pudo obtener el texto de ${id}: ${errores.join(" | ")}. Consúltalo en ${urlHudoc(id)}`, htmlUrl);
 }

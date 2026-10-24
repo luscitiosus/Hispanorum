@@ -422,7 +422,7 @@ export function createServer() {
         inputSchema: { itemid: z.string().describe("itemid de tedh_buscar, p. ej. 001-57905"), offset, max_caracteres: maxChars },
     }, safe(async ({ itemid, offset, max_caracteres }) => {
         const d = await tedh.documento(itemid);
-        return withCitation({ fuente: "HUDOC · Tribunal Europeo de Derechos Humanos", identificador: itemid, url: d.url }, page(d.texto, offset, max_caracteres));
+        return withCitation({ fuente: `HUDOC · Tribunal Europeo de Derechos Humanos (${d.via})`, identificador: itemid, url: d.url }, page(d.texto, offset, max_caracteres));
     }));
     return server;
 }
