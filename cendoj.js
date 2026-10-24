@@ -136,8 +136,14 @@ export async function buscar(b) {
     });
     return parseResultados(res.text());
 }
-export function urlPdf(referencia) {
-    return `${BASE}/search/contenidos.action?action=accessToPDF&reference=${encodeURIComponent(referencia)}&encode=true`;
+/** Formatos de enlace al PDF que usa la propia web (el primero es el de sus enlaces públicos). */
+export function urlsPdf(referencia) {
+    const r = encodeURIComponent(referencia);
+    return [
+        `${BASE}/search/contenidos.action?action=accessToPDF&publicinterface=true&tab=AN&reference=${r}&encode=true&databasematch=AN`,
+        `${BASE}/search/contenidos.action?action=accessToPDF&publicinterface=true&tab=TS&reference=${r}&encode=true&databasematch=TS`,
+        `${BASE}/search/contenidos.action?action=accessToPDF&reference=${r}&encode=true`,
+    ];
 }
 function diagnostico(res) {
     const tipo = res.headers.get("content-type") ?? "?";
@@ -189,7 +195,7 @@ export async function textoResolucion(referencia, urlDoc) {
         if (v)
             enlaces.add(new URL(v.replace(/&amp;/g, "&"), docUrl).toString());
     });
-    for (const m of html.matchAll(/["']([^"']*accessToPDF[^"']*)["']/g)) {
+    for (const m of html.matchAll(/["']([^"'\s]*action=accessToPDF[^"'\s]*)["']/g)) {
         enlaces.add(new URL(m[1].replace(/&amp;/g, "&"), docUrl).toString());
     }
     for (const url of enlaces) {
@@ -199,11 +205,15 @@ export async function textoResolucion(referencia, urlDoc) {
     }
     if (!enlaces.size)
         intentos.push(`${docUrl} → sin enlace al PDF; ${diagnostico(doc)}`);
-    // 2) Enlace directo al PDF dentro de la misma sesión.
-    const directo = urlPdf(referencia);
-    const texto = await pedirPdf(directo, docUrl);
-    if (texto)
-        return { url: directo, texto };
-    throw new SourceError(`CENDOJ no devolvió el PDF de la referencia ${referencia}. Abre la resolución en ${docUrl}. Detalle técnico: ${intentos.join(" | ")}`, directo);
+    // 2) Enlaces directos al PDF dentro de la misma sesión.
+    const directos = urlsPdf(referencia);
+    for (const url of directos) {
+        if (enlaces.has(url))
+            continue;
+        const texto = await pedirPdf(url, docUrl);
+        if (texto)
+            return { url, texto };
+    }
+    throw new SourceError(`CENDOJ no devolvió el PDF de la referencia ${referencia}. Abre la resolución en ${docUrl}. Detalle técnico: ${intentos.join(" | ")}`, directos[0]);
 }
 export const urlDocumento = (referencia) => `${BASE}/search/AN/openDocument/${referencia}`;
