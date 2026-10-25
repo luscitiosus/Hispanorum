@@ -180,7 +180,7 @@ export function normalizaArticulo(n) {
 export function encontrarArticulo(bloques, numero) {
     const n = normalizaArticulo(numero);
     const esc = n.replace(/[.*+?^${}()|[\]\\]/g, "\\$&");
-    const re = new RegExp(`^(art[íi]culo|art\\.)\\s+${esc}(\\.|\\s*$|\\s*[-–—:]|\\s+\\()`, "i");
+    const re = new RegExp(`^(art[íi]culo|arts?\\.?)\\s+${esc}(\\.|\\s*$|\\s*[-–—:]|\\s+\\()`, "i");
     return bloques.find((b) => re.test(b.titulo.trim()));
 }
 export function parseSumario(json) {
