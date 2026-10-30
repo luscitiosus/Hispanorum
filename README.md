@@ -29,6 +29,7 @@ En el plan gratuito el servicio se duerme tras 15 minutos sin uso; la primera co
 
 - Probado en vivo el 24/10/2026: BOE, autonómicos, TC, EUR-Lex y TJUE funcionan; del CENDOJ funciona la búsqueda.
 - BOE: API oficial, lo más fiable; su buscador ha dado errores 500 intermitentes.
+- BOE, si la API de legislación consolidada no responde (5xx, 429, 403 o red caída): `boe_metadatos`, `boe_indice`, `boe_articulo` y `boe_texto_consolidado` leen la página web del texto consolidado (`https://www.boe.es/buscar/act.php?id=…`), que es otro servicio. Esa página solo trae la redacción vigente, con las notas de reforma, así que `historico=true` no está disponible por esa vía. La respuesta lo indica con un `AVISO:` y la fuente «(página web)». Un 404 no activa la alternativa. Tras un fallo, la API no se reintenta durante 5 minutos (`BOE_API_PAUSA_MS`). `npm test` ejecuta las pruebas (sin red).
 - CENDOJ: la búsqueda funciona. El texto completo no: desde Render el CGPJ muestra su CAPTCHA «Descargas masivas», que el conector no sortea; devuelve el enlace para abrir la resolución en el navegador.
 - TC: lectura por cita, ECLI o id; no busca por palabras.
 - UE/TJUE: búsqueda por palabras del título; autos y documentos antiguos a veces sin versión española.
